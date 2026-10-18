@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vind</title>
+<style>
+  :root { --bg:#0b1a2b; --fg:#f2f6fa; --muted:#8fa3b8; --mean:#4fc3f7; --gust:#ffb74d; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--fg);
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow: hidden; }
+  .wrap { height: 100vh; display: grid; grid-template-columns: 50% 50%; padding: 4vh 3vw; gap: 3vw; position: relative; }
+  .compass { display: flex; align-items: center; justify-content: center; min-height: 0; }
+  .compass svg { height: 100%; width: 100%; }
+  .numbers { display: flex; flex-direction: column; justify-content: center; gap: 4vh; }
+  .title { font-size: 4vh; color: var(--muted); letter-spacing: .05em; text-transform: uppercase; margin-bottom: -4.5vh; }
+  .item .label { font-size: 5vh; color: var(--muted); margin-bottom: -2.5vh }
+  .item .line { display: flex; align-items: baseline; gap: 1.5vw; }
+  .val { font-size: 22vh; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  .unit { font-size: 5vh; color: var(--muted); }
+  .mean .val { color: var(--mean); margin-bottom: -2.5vh }
+  .gust .val { color: var(--gust); margin-bottom: -2.5vh }
+  .foot { font-size: 2.4vh; color: var(--muted); }
+  .stale { color: #ff8a80; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="compass">
+    <svg viewBox="0 0 500 500" aria-label="Vindriktning">
+      <circle cx="250" cy="250" r="180" fill="none" stroke="#2a4058" stroke-width="4"/>
+      <g id="ticks"></g>
+      <g fill="#f2f6fa" font-size="38" font-weight="700" text-anchor="middle">
+        <text x="250" y="58">N</text>
+        <text x="455" y="263">Ö</text>
+        <text x="250" y="468">S</text>
+        <text x="45" y="263">V</text>
+      </g>
+      <g id="arrow" transform="rotate(0 250 250)">
+        <polygon points="250,88 288,250 261,250 261,412 239,412 239,250 212,250" fill="#4fc3f7"/>
+      </g>
+      <circle cx="250" cy="250" r="12" fill="#0b1a2b" stroke="#4fc3f7" stroke-width="4"/>
+    </svg>
+  </div>
+
+  <div class="numbers">
+    <div class="title" id="station">Vind</div>
+    <div class="item mean"><div class="label">Medelvind</div>
+      <div class="line"><span class="val" id="mean">–</span><span class="unit">m/s</span></div></div>
+    <div class="item gust"><div class="label">Byvind</div>
+      <div class="line"><span class="val" id="gust">–</span><span class="unit">m/s</span></div></div>
+    <div class="foot" id="foot"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var STATION = params.get('station') || '68';
+  var URL_NOW = 'https://services.viva.sjofartsverket.se/output/vivaoutputservice.svc/ViVaStationWithDirection/' + STATION;
+  var NOW_MS = 30 * 1000;   // uppdatera var 30:e sekund
+  var STALE_MIN = 20;       // varna om mätningen är äldre än så
+
+  var ticks = document.getElementById('ticks');
+  for (var a = 0; a < 360; a += 10) {
+    var big = a % 90 === 0;
+    var r1 = big ? 160 : 167, r2 = 180, rad = (a - 90) * Math.PI / 180;
+    var l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    l.setAttribute('x1', 250 + r1 * Math.cos(rad)); l.setAttribute('y1', 250 + r1 * Math.sin(rad));
+    l.setAttribute('x2', 250 + r2 * Math.cos(rad)); l.setAttribute('y2', 250 + r2 * Math.sin(rad));
+    l.setAttribute('stroke', big ? '#8fa3b8' : '#2a4058'); l.setAttribute('stroke-width', big ? 5 : 3);
+    ticks.appendChild(l);
+  }
+
+  function num(v) { var n = parseFloat(String(v).split(' ').pop().replace(',', '.')); return isNaN(n) ? null : n; }
+  function fmt(n) { return n === null ? '–' : n.toFixed(1).replace('.', ','); }
+  function parseTime(s) { return new Date(String(s).replace(' ', 'T')); }
+
+  var lastUpdated = null;
+
+  function showFoot() {
+    var foot = document.getElementById('foot');
+    if (!lastUpdated) { foot.textContent = ''; return; }
+    var ageMin = (Date.now() - lastUpdated.getTime()) / 60000;
+    var hh = ('0' + lastUpdated.getHours()).slice(-2), mm = ('0' + lastUpdated.getMinutes()).slice(-2);
+    foot.textContent = 'Mätning ' + hh + ':' + mm + (ageMin > STALE_MIN ? ' – gammal data' : '');
+    foot.className = 'foot' + (ageMin > STALE_MIN ? ' stale' : '');
+  }
+
+  function update() {
+    fetch(URL_NOW, { cache: 'no-store' }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function (j) {
+      var res = j.GetSingleStationWithDirectionsAsParametersResult;
+      var by = {};
+      (res.Samples || []).forEach(function (s) { by[s.Name] = s; });
+      var mean = by.Medelvind ? num(by.Medelvind.Value) : null;
+      var gust = by.Byvind ? num(by.Byvind.Value) : null;
+      var deg = by.Vindriktning ? num(by.Vindriktning.Value)
+              : (by.Medelvind ? by.Medelvind.Heading : null);
+      document.getElementById('station').textContent = res.Name || 'Vind';
+      document.getElementById('mean').textContent = fmt(mean);
+      document.getElementById('gust').textContent = fmt(gust);
+      if (deg !== null) {
+        // Vinden kommer FRÅN deg; pilen visar vart den blåser (deg + 180)
+        document.getElementById('arrow').setAttribute('transform', 'rotate(' + ((deg + 180) % 360) + ' 250 250)');
+      }
+      var t = by.Medelvind ? by.Medelvind.Updated : null;
+      lastUpdated = t ? parseTime(t) : null;
+      showFoot();
+    }).catch(function (e) {
+      var foot = document.getElementById('foot');
+      foot.className = 'foot stale';
+      foot.textContent = 'Kunde inte hämta data (' + e.message + ')';
+    });
+  }
+
+  update();
+  setInterval(update, NOW_MS);
+  setInterval(showFoot, 60000);
+})();
+</script>
+</body>
+</html>

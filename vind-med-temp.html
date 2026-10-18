@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vind och temperatur</title>
+<style>
+  /* --k skalar hela vindmätaren (kompass + text) lika mycket, så proportionerna behålls */
+  :root { --k: .9; --bg:#0b1a2b; --fg:#f2f6fa; --muted:#8fa3b8; --mean:#4fc3f7; --gust:#ffb74d; --air:#ffd54f; --water:#4dd0c4; }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--fg);
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow: hidden; }
+  .wrap { height: 100vh; display: flex; padding: 4vh 3vw; gap: 2vw; }
+
+  /* Enhet bredvid mätvärde: överkanten ska ligga i linje med siffrornas överkant (justeras av skriptet) */
+  .line { display: flex; align-items: flex-start; }
+  .val, .tval { font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  .unit, .tunit { line-height: 1; color: var(--muted); }
+
+  /* Temperaturer (vänster) */
+  .temps { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; align-items: center; gap: 7vh; }
+  .temp { display: flex; flex-direction: column; align-items: center; }
+  .temp svg { height: 14vh; width: 14vh; fill: none; stroke: currentColor; stroke-width: 3.5; stroke-linecap: round; stroke-linejoin: round; }
+  .temp .line { gap: .8vw; margin-top: 1.2vh; }
+  .temp .tval { font-size: 11vh; }
+  .temp .tunit { font-size: 4.5vh; }
+  .temp .tcap { font-size: 3.6vh; color: var(--muted); margin-top: .8vh; }
+  .air { color: var(--air); }
+  .water { color: var(--water); }
+
+  /* Vindmätare (samma upplägg som tidigare, skalad med --k) */
+  .compass { flex: none; align-self: center; width: calc(81vh * var(--k)); height: calc(81vh * var(--k)); }
+  .compass svg { height: 100%; width: 100%; }
+  .numbers { flex: none; width: 29vw; display: flex; flex-direction: column; justify-content: center; gap: calc(4vh * var(--k)); }
+  .title { font-size: calc(4vh * var(--k)); color: var(--muted); letter-spacing: .05em; text-transform: uppercase; margin-bottom: calc(-2.5vh * var(--k)); }
+  .item .label { font-size: calc(5vh * var(--k)); color: var(--muted); }
+  .numbers .line { gap: 1.2vw; }
+  .val { font-size: calc(22vh * var(--k)); }
+  .unit { font-size: calc(5vh * var(--k)); }
+  .mean .val { color: var(--mean); }
+  .gust .val { color: var(--gust); }
+  .foot { font-size: calc(4vh * var(--k)); color: var(--muted); }
+  .stale { color: #ff8a80; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="temps">
+    <div class="temp air">
+      <!-- sol och moln -->
+      <svg viewBox="0 0 64 64" aria-label="Lufttemperatur">
+        <g stroke="#ffd54f">
+          <circle cx="22" cy="22" r="7"/>
+          <line x1="10" y1="22" x2="5" y2="22"/>
+          <line x1="13.5" y1="13.5" x2="10" y2="10"/>
+          <line x1="22" y1="10" x2="22" y2="5"/>
+          <line x1="30.5" y1="13.5" x2="34" y2="10"/>
+          <line x1="13.5" y1="30.5" x2="10" y2="34"/>
+        </g>
+        <path d="M20 50h26a9 9 0 0 0 1-17.9 13 13 0 0 0-25-2A10 10 0 0 0 20 50Z" fill="#0b1a2b" stroke="#e3e9ef"/>
+      </svg>
+      <div class="line"><span class="tval" id="air">–</span><span class="tunit">°C</span></div>
+      <div class="tcap">Luft</div>
+    </div>
+    <div class="temp water">
+      <!-- vattendroppe med vågor -->
+      <svg viewBox="0 0 64 64" aria-label="Vattentemperatur">
+        <path d="M32 7C32 7 15 26 15 38a17 17 0 0 0 34 0C49 26 32 7 32 7Z"/>
+        <path d="M22 40q5-5 10 0t10 0"/>
+        <path d="M22 47q5-5 10 0t10 0"/>
+      </svg>
+      <div class="line"><span class="tval" id="water">–</span><span class="tunit">°C</span></div>
+      <div class="tcap">Vatten</div>
+    </div>
+  </div>
+
+  <div class="compass">
+    <svg viewBox="0 0 500 500" aria-label="Vindriktning">
+      <circle cx="250" cy="250" r="180" fill="none" stroke="#2a4058" stroke-width="4"/>
+      <g id="ticks"></g>
+      <g fill="#f2f6fa" font-size="38" font-weight="700" text-anchor="middle">
+        <text x="250" y="58">N</text>
+        <text x="455" y="263">Ö</text>
+        <text x="250" y="468">S</text>
+        <text x="45" y="263">V</text>
+      </g>
+      <g id="arrow" transform="rotate(0 250 250)">
+        <polygon points="250,88 288,250 261,250 261,412 239,412 239,250 212,250" fill="#4fc3f7"/>
+      </g>
+      <circle cx="250" cy="250" r="12" fill="#0b1a2b" stroke="#4fc3f7" stroke-width="4"/>
+    </svg>
+  </div>
+
+  <div class="numbers">
+    <div class="title" id="station">Vind</div>
+    <div class="item mean"><div class="label">Medelvind</div>
+      <div class="line"><span class="val" id="mean">–</span><span class="unit">m/s</span></div></div>
+    <div class="item gust"><div class="label">Byvind</div>
+      <div class="line"><span class="val" id="gust">–</span><span class="unit">m/s</span></div></div>
+    <div class="foot" id="foot"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var params = new URLSearchParams(location.search);
+  var STATION = params.get('station') || '68';        // Viva: 68 = Malmö Hamn
+  var SMHI_STATION = params.get('smhi') || '52350';   // SMHI: 52350 = Malmö A
+  var URL_NOW = 'https://services.viva.sjofartsverket.se/output/vivaoutputservice.svc/ViVaStationWithDirection/' + STATION;
+  var SMHI_BASE = 'https://opendata-download-metobs.smhi.se/api/version/1.0/parameter/1/station/' + SMHI_STATION + '/period/';
+  var NOW_MS = 30 * 1000;        // vind och vattentemp var 30:e sekund
+  var AIR_MS = 10 * 60 * 1000;   // lufttemp var 10:e minut (SMHI uppdaterar varje timme)
+  var STALE_MIN = 20;            // varna om vindmätningen är äldre än så
+  var AIR_MAX_AGE_H = 3;         // visa inte lufttemp som är äldre än så
+
+  var ticks = document.getElementById('ticks');
+  for (var a = 0; a < 360; a += 10) {
+    var big = a % 90 === 0;
+    var r1 = big ? 160 : 167, r2 = 180, rad = (a - 90) * Math.PI / 180;
+    var l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+    l.setAttribute('x1', 250 + r1 * Math.cos(rad)); l.setAttribute('y1', 250 + r1 * Math.sin(rad));
+    l.setAttribute('x2', 250 + r2 * Math.cos(rad)); l.setAttribute('y2', 250 + r2 * Math.sin(rad));
+    l.setAttribute('stroke', big ? '#8fa3b8' : '#2a4058'); l.setAttribute('stroke-width', big ? 5 : 3);
+    ticks.appendChild(l);
+  }
+
+  // Lägger enheten (m/s, °C) så att dess överkant ligger i linje med siffrornas överkant.
+  // Mäter de faktiska tecknen med canvas, så det fungerar oavsett typsnitt.
+  var ctx = document.createElement('canvas').getContext('2d');
+  function inkTop(el, text) {
+    var cs = getComputedStyle(el), size = parseFloat(cs.fontSize);
+    ctx.font = cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily;
+    var m = ctx.measureText(text);
+    var fa = m.fontBoundingBoxAscent, fd = m.fontBoundingBoxDescent, ink = m.actualBoundingBoxAscent;
+    if (!(fa >= 0) || !(fd >= 0) || !(ink >= 0)) return size * 0.2;   // reserv om webbläsaren saknar måtten
+    return (size - (fa + fd)) / 2 + fa - ink;   // avstånd från radens överkant till tecknens överkant (line-height: 1)
+  }
+  function alignUnits() {
+    var lines = document.querySelectorAll('.line');
+    for (var i = 0; i < lines.length; i++) {
+      var v = lines[i].querySelector('.val, .tval'), u = lines[i].querySelector('.unit, .tunit');
+      if (!v || !u) continue;
+      u.style.marginTop = Math.max(0, inkTop(v, '0123456789') - inkTop(u, u.textContent)) + 'px';
+    }
+  }
+  alignUnits();
+  window.addEventListener('load', alignUnits);
+  window.addEventListener('resize', alignUnits);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(alignUnits);
+
+  function num(v) { var n = parseFloat(String(v).split(' ').pop().replace(',', '.')); return isNaN(n) ? null : n; }
+  function fmt(n) { return n === null ? '–' : n.toFixed(1).replace('.', ','); }
+  function parseTime(s) { return new Date(String(s).replace(' ', 'T')); }
+  function setText(id, t) { document.getElementById(id).textContent = t; }
+
+  var lastUpdated = null;
+
+  function showFoot() {
+    var foot = document.getElementById('foot');
+    if (!lastUpdated) { foot.textContent = ''; return; }
+    var ageMin = (Date.now() - lastUpdated.getTime()) / 60000;
+    var hh = ('0' + lastUpdated.getHours()).slice(-2), mm = ('0' + lastUpdated.getMinutes()).slice(-2);
+    foot.textContent = 'Mätning ' + hh + ':' + mm + (ageMin > STALE_MIN ? ' – gammal data' : '');
+    foot.className = 'foot' + (ageMin > STALE_MIN ? ' stale' : '');
+  }
+
+  function updateViva() {
+    fetch(URL_NOW, { cache: 'no-store' }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function (j) {
+      var res = j.GetSingleStationWithDirectionsAsParametersResult;
+      var by = {};
+      (res.Samples || []).forEach(function (s) { by[s.Name] = s; });
+      var mean = by.Medelvind ? num(by.Medelvind.Value) : null;
+      var gust = by.Byvind ? num(by.Byvind.Value) : null;
+      var deg = by.Vindriktning ? num(by.Vindriktning.Value)
+              : (by.Medelvind ? by.Medelvind.Heading : null);
+      setText('station', res.Name || 'Vind');
+      setText('mean', fmt(mean));
+      setText('gust', fmt(gust));
+      setText('water', fmt(by.Vattentemp ? num(by.Vattentemp.Value) : null));
+      if (deg !== null) {
+        // Vinden kommer FRÅN deg; pilen visar vart den blåser (deg + 180)
+        document.getElementById('arrow').setAttribute('transform', 'rotate(' + ((deg + 180) % 360) + ' 250 250)');
+      }
+      var t = by.Medelvind ? by.Medelvind.Updated : null;
+      lastUpdated = t ? parseTime(t) : null;
+      showFoot();
+    }).catch(function (e) {
+      var foot = document.getElementById('foot');
+      foot.className = 'foot stale';
+      foot.textContent = 'Kunde inte hämta data (' + e.message + ')';
+    });
+  }
+
+  function lastValue(url) {
+    return fetch(url, { cache: 'no-store' }).then(function (r) {
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return r.json();
+    }).then(function (d) { return (d.value && d.value.length) ? d.value[d.value.length - 1] : null; });
+  }
+
+  function updateAir() {
+    // Senaste timmen först; saknas den (data försenad) tas senaste värdet från dygnet.
+    lastValue(SMHI_BASE + 'latest-hour/data.json').then(function (v) {
+      return v || lastValue(SMHI_BASE + 'latest-day/data.json');
+    }).then(function (v) {
+      var fresh = v && (Date.now() - v.date) < AIR_MAX_AGE_H * 3600 * 1000;
+      setText('air', fresh ? fmt(parseFloat(v.value)) : '–');
+    }).catch(function () { /* behåll senaste värdet; visar – om inget finns */ });
+  }
+
+  updateViva();
+  updateAir();
+  setInterval(updateViva, NOW_MS);
+  setInterval(updateAir, AIR_MS);
+  setInterval(showFoot, 60000);
+})();
+</script>
+</body>
+</html>
