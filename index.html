@@ -12,15 +12,18 @@
   .wrap { height: 100vh; display: grid; grid-template-columns: 50% 50%; padding: 4vh 3vw; gap: 3vw; position: relative; }
   .compass { display: flex; align-items: center; justify-content: center; min-height: 0; }
   .compass svg { height: 100%; width: 100%; }
-  .numbers { display: flex; flex-direction: column; justify-content: center; gap: 4vh; }
-  .title { font-size: 4vh; color: var(--muted); letter-spacing: .05em; text-transform: uppercase; margin-bottom: -4.5vh; }
-  .item .label { font-size: 5vh; color: var(--muted); margin-bottom: -2.5vh }
+  .numbers { display: flex; flex-direction: column; justify-content: center; gap: 3vh; }
+  .temp { display: flex; align-items: baseline; gap: 1.5vw; }
+  .temp .tlabel { font-size: 5vh; color: var(--muted); }
+  .temp .tval { font-size: 9vh; font-weight: 700; color: #80deea; line-height: 1; font-variant-numeric: tabular-nums; }
+  .title { font-size: 4vh; color: var(--muted); letter-spacing: .05em; text-transform: uppercase; margin-bottom: -2.5vh; }
+  .item .label { font-size: 5vh; color: var(--muted); }
   .item .line { display: flex; align-items: baseline; gap: 1.5vw; }
-  .val { font-size: 22vh; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+  .val { font-size: 20vh; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
   .unit { font-size: 5vh; color: var(--muted); }
-  .mean .val { color: var(--mean); margin-bottom: -2.5vh }
-  .gust .val { color: var(--gust); margin-bottom: -2.5vh }
-  .foot { font-size: 2.4vh; color: var(--muted); }
+  .mean .val { color: var(--mean); }
+  .gust .val { color: var(--gust); }
+  .foot { font-size: 4vh; color: var(--muted); }
   .stale { color: #ff8a80; }
 </style>
 </head>
@@ -49,14 +52,37 @@
       <div class="line"><span class="val" id="mean">–</span><span class="unit">m/s</span></div></div>
     <div class="item gust"><div class="label">Byvind</div>
       <div class="line"><span class="val" id="gust">–</span><span class="unit">m/s</span></div></div>
+    <div class="temp"><span class="tlabel">Vattentemp</span><span class="tval" id="temp">–</span><span class="unit">°C</span></div>
     <div class="foot" id="foot"></div>
   </div>
 </div>
 
 <script>
 (function () {
-  var params = new URLSearchParams(location.search);
-  var STATION = params.get('station') || '68';
+  // Visa JavaScript-fel på skärmen (hjälper vid felsökning på spelaren)
+  window.onerror = function (msg) {
+    var f = document.getElementById('foot');
+    if (f) { f.className = 'foot stale'; f.textContent = 'Fel: ' + msg; }
+  };
+  // Enkel läsning av ?station=NUMMER (fungerar även i äldre webbläsare)
+  var qm = /[?&]station=([0-9]+)/.exec(location.search);
+  var STATION = qm ? qm[1] : '68';
+
+  // Hämta JSON med XMLHttpRequest (stöds överallt, även där fetch saknas)
+  function getJson(url) {
+    return new Promise(function (resolve, reject) {
+      var x = new XMLHttpRequest();
+      x.open('GET', url + (url.indexOf('?') < 0 ? '?' : '&') + '_=' + Date.now(), true);
+      x.timeout = 15000;
+      x.onload = function () {
+        if (x.status < 200 || x.status >= 300) { reject(new Error('HTTP ' + x.status)); return; }
+        try { resolve(JSON.parse(x.responseText)); } catch (e) { reject(new Error('Ogiltigt svar')); }
+      };
+      x.onerror = function () { reject(new Error('Nätverksfel eller blockerat')); };
+      x.ontimeout = function () { reject(new Error('Tidsgräns')); };
+      x.send();
+    });
+  }
   var URL_NOW = 'https://services.viva.sjofartsverket.se/output/vivaoutputservice.svc/ViVaStationWithDirection/' + STATION;
   var NOW_MS = 30 * 1000;   // uppdatera var 30:e sekund
   var STALE_MIN = 20;       // varna om mätningen är äldre än så
@@ -88,10 +114,7 @@
   }
 
   function update() {
-    fetch(URL_NOW, { cache: 'no-store' }).then(function (r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return r.json();
-    }).then(function (j) {
+    getJson(URL_NOW).then(function (j) {
       var res = j.GetSingleStationWithDirectionsAsParametersResult;
       var by = {};
       (res.Samples || []).forEach(function (s) { by[s.Name] = s; });
@@ -102,6 +125,8 @@
       document.getElementById('station').textContent = res.Name || 'Vind';
       document.getElementById('mean').textContent = fmt(mean);
       document.getElementById('gust').textContent = fmt(gust);
+      var temp = by.Vattentemp ? num(by.Vattentemp.Value) : null;
+      document.getElementById('temp').textContent = fmt(temp);
       if (deg !== null) {
         // Vinden kommer FRÅN deg; pilen visar vart den blåser (deg + 180)
         document.getElementById('arrow').setAttribute('transform', 'rotate(' + ((deg + 180) % 360) + ' 250 250)');
