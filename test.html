@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nätverkstest</title>
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: #0b1a2b; color: #f2f6fa; font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow: hidden; }
+  .wrap { padding: 3vh 3vw; }
+  h1 { font-size: 4vh; margin-bottom: 1.5vh; }
+  .info { font-size: 2.6vh; color: #8fa3b8; margin-bottom: 2vh; line-height: 1.35; word-break: break-all; }
+  table { width: 100%; border-collapse: collapse; font-size: 3vh; }
+  th { text-align: left; color: #8fa3b8; font-weight: 400; padding: .6vh 1vw; border-bottom: 1px solid #2a4058; }
+  td { padding: 1vh 1vw; border-bottom: 1px solid #1b2f45; }
+  .ok { color: #66e08c; } .bad { color: #ff8a80; } .wait { color: #8fa3b8; } .na { color: #5d7188; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Nätverkstest</h1>
+  <div class="info" id="info"></div>
+  <table>
+    <tr><th>Adress</th><th>Når servern?</th><th>Läsbart svar?</th></tr>
+    <tbody id="rows"></tbody>
+  </table>
+  <div class="info" style="margin-top:2vh">Når servern = DNS, nätverk och certifikat fungerar. Läsbart svar = även webbläsarens CORS-regler släpper igenom.</div>
+</div>
+<script>
+(function () {
+  // Fyll i din Cloudflare Worker om du har en, annars lämna tom.
+  var PROXY = '';
+
+  var tests = [
+    { name: 'GitHub (den här sidan)', url: location.href.split('#')[0].split('?')[0], readable: true },
+    { name: 'Viva data',  url: 'https://services.viva.sjofartsverket.se/output/vivaoutputservice.svc/ViVaStationWithDirection/68', readable: true },
+    { name: 'Viva webb',  url: 'https://viva.sjofartsverket.se/', readable: false },
+    { name: 'SMHI data',  url: 'https://opendata-download-metobs.smhi.se/api/version/1.0/parameter/1/station/52350/period/latest-hour/data.json', readable: true },
+    { name: 'Teamup',     url: 'https://teamup.com/', readable: false },
+    { name: 'Cloudflare', url: 'https://www.cloudflare.com/', readable: false }
+  ];
+  if (PROXY) tests.push({ name: 'Din Worker', url: PROXY + '/viva/68', readable: true });
+
+  var info = document.getElementById('info');
+  info.textContent = 'Tid på spelaren: ' + new Date().toString() + ' | Webbläsare: ' + navigator.userAgent;
+
+  var tbody = document.getElementById('rows');
+  tests.forEach(function (t) {
+    var tr = document.createElement('tr');
+    tr.innerHTML = '<td></td><td class="wait">testar…</td><td class="na">–</td>';
+    tr.children[0].textContent = t.name;
+    tbody.appendChild(tr);
+    t.reach = tr.children[1]; t.read = tr.children[2];
+  });
+
+  function set(cell, ok, text) { cell.className = ok ? 'ok' : 'bad'; cell.textContent = text; }
+
+  function reach(t) {
+    var start = Date.now();
+    if (!window.fetch) { set(t.reach, false, 'fetch saknas i webbläsaren'); return; }
+    var done = false;
+    var timer = setTimeout(function () { if (!done) { done = true; set(t.reach, false, 'tidsgräns (15 s)'); } }, 15000);
+    fetch(t.url, { mode: 'no-cors', cache: 'no-store' }).then(function () {
+      if (done) return; done = true; clearTimeout(timer);
+      set(t.reach, true, 'ja (' + (Date.now() - start) + ' ms)');
+    }).catch(function (e) {
+      if (done) return; done = true; clearTimeout(timer);
+      set(t.reach, false, 'NEJ – ' + (e && e.message ? e.message : 'fel'));
+    });
+  }
+
+  function readable(t) {
+    if (!t.readable) { t.read.className = 'na'; t.read.textContent = '–'; return; }
+    var x = new XMLHttpRequest();
+    x.open('GET', t.url + (t.url.indexOf('?') < 0 ? '?' : '&') + '_=' + Date.now(), true);
+    x.timeout = 15000;
+    x.onload = function () { set(t.read, x.status >= 200 && x.status < 300, x.status >= 200 && x.status < 300 ? 'ja' : 'HTTP ' + x.status); };
+    x.onerror = function () { set(t.read, false, 'NEJ'); };
+    x.ontimeout = function () { set(t.read, false, 'tidsgräns'); };
+    x.send();
+  }
+
+  tests.forEach(function (t) { reach(t); readable(t); });
+})();
+</script>
+</body>
+</html>
