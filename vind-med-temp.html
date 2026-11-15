@@ -129,8 +129,13 @@
       x.send();
     });
   }
-  var URL_NOW = 'https://services.viva.sjofartsverket.se/output/vivaoutputservice.svc/ViVaStationWithDirection/' + STATION;
-  var SMHI_BASE = 'https://opendata-download-metobs.smhi.se/api/version/1.0/parameter/1/station/' + SMHI_STATION + '/period/';
+  // Lämna tom för att hämta direkt från Viva och SMHI. Fyll i adressen till din Cloudflare Worker
+  // (utan snedstreck på slutet), t.ex. 'https://vindproxy.dittnamn.workers.dev'
+  var PROXY = 'https://vindproxy.superdupersvard.workers.dev';
+  var URL_NOW = PROXY ? PROXY + '/viva/' + STATION
+    : 'https://services.viva.sjofartsverket.se/output/vivaoutputservice.svc/ViVaStationWithDirection/' + STATION;
+  var SMHI_BASE = PROXY ? PROXY + '/smhi/' + SMHI_STATION + '/'
+    : 'https://opendata-download-metobs.smhi.se/api/version/1.0/parameter/1/station/' + SMHI_STATION + '/period/';
   var NOW_MS = 30 * 1000;        // vind och vattentemp var 30:e sekund
   var AIR_MS = 10 * 60 * 1000;   // lufttemp var 10:e minut (SMHI uppdaterar varje timme)
   var STALE_MIN = 20;            // varna om vindmätningen är äldre än så
