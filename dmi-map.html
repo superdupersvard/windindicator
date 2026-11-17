@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Do not tell dmi.dk which site the request comes from (a local file sends no referrer either) -->
+<meta name="referrer" content="no-referrer">
 <title>DMI map</title>
 <style>
   :root { --bg:#0b1a2b; --fg:#f2f6fa; --muted:#a9bacb; --accent:#4fc3f7; --panel:rgba(11,26,43,.78); }
@@ -170,6 +172,7 @@
         img.onload = function () { frame.state = 'ok'; };
         img.onerror = function () { frame.state = 'failed'; };
         img.alt = '';
+        img.referrerPolicy = 'no-referrer';
         mapbox.insertBefore(img, mapbox.firstChild);   // keep the images below the text
         img.src = buildImageUrl(time);
         frames.push(frame);
