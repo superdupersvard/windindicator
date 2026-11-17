@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DMI map</title>
+<style>
+  :root { --bg:#0b1a2b; --fg:#f2f6fa; --muted:#a9bacb; --accent:#4fc3f7; --panel:rgba(11,26,43,.78); }
+  * { box-sizing: border-box; margin: 0; }
+  html, body { height: 100%; background: var(--bg); color: var(--fg);
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow: hidden; }
+  .wrap { height: 100vh; display: flex; align-items: center; justify-content: center; }
+
+  /* The map is square (512 x 512) and scaled as large as the screen allows */
+  .mapbox { position: relative; flex: none; width: min(96vh, 96vw); height: min(96vh, 96vw); }
+  .mapbox img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: none; }
+
+  /* Info panel in the top right corner of the map */
+  .info { position: absolute; top: 2%; right: 2%; text-align: right; background: var(--panel);
+    padding: 1.2vh 1.8vh 1.4vh; border-radius: 1vh; }
+  .title { font-size: 3.2vh; color: var(--muted); letter-spacing: .04em; text-transform: uppercase; line-height: 1.2; }
+  .clock { font-size: 10vh; font-weight: 700; line-height: 1.05; font-variant-numeric: tabular-nums; color: var(--accent); }
+  .dots { display: flex; justify-content: flex-start; gap: 1vh; margin-top: 1vh; }
+  .dot { width: 1.8vh; height: 1.8vh; border-radius: 50%; background: #3a5068; }
+  .dot.active { background: var(--accent); }
+  .dot.missing { background: transparent; border: 2px solid #7f93a8; }
+  .status { font-size: 2.4vh; color: #ff8a80; margin-top: 1vh; line-height: 1.2; }
+  .status:empty { display: none; }
+
+  /* Source label in the bottom right corner of the map */
+  .source { position: absolute; bottom: 2%; right: 2%; font-size: 2.4vh; color: var(--muted);
+    background: var(--panel); padding: .5vh 1.2vh; border-radius: .8vh; }
+
+  /* Message shown instead of the map when the page is set up incorrectly */
+  .notice { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
+    padding: 0 6%; text-align: center; font-size: 3.4vh; line-height: 1.4; color: var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="mapbox" id="mapbox">
+    <div class="info" id="info">
+      <div class="title" id="title"></div>
+      <div class="clock" id="clock">–</div>
+      <div class="dots" id="dots"></div>
+      <div class="status" id="status"></div>
+    </div>
+    <div class="source" id="source"></div>
+    <div class="notice" id="notice"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  // ---- Settings -------------------------------------------------------------
+  var CONFIG = {
+    baseUrl: 'https://www.dmi.dk/ZoombareKort/map',
+    srs: 'EPSG:3575',
+    size: 512,              // the DMI server only accepts 512 x 512
+    bbox: [147460.9375, -3808593.75, 229492.1875, -3726562.5],  // square, 82 x 82 km (minX, minY, maxX, maxY)
+    frameCount: 5,          // number of hours in the loop, starting with the current hour
+    frameMs: 1500,          // display time per frame
+    firstFrameMs: 3000,     // display time of the first frame (pause before the loop continues)
+    cacheBust: true,        // add a parameter so new forecasts are not served from the browser cache
+    checkMs: 30 * 1000      // how often to check whether a new hour has started
+  };
+
+  // Text shown on screen (Swedish). Layer names are the values accepted by ?layer=
+  var TEXT = {
+    layers: { current_eu: 'Havsström', wind_eu: 'Vind' },
+    source: 'Källa: DMI',
+    loading: 'Hämtar kartor…',
+    loadFailed: 'Kunde inte hämta kartan från DMI',
+    missingFrames: function (missing, total) { return missing + ' av ' + total + ' tider saknas'; },
+    layerRequired: 'Ange lager i adressen:\n?layer=current_eu  eller  ?layer=wind_eu',
+    errorPrefix: 'Fel: '
+  };
+
+  // ---- URL parameters -------------------------------------------------------
+  // ?layer=current_eu | wind_eu   (required, there is no default)
+  // ?frames=6                    (optional, number of hours)
+  // ?bbox=minX,minY,maxX,maxY    (optional, other map area)
+  function getParam(name, pattern) {
+    var m = new RegExp('[?&]' + name + '=(' + pattern + ')').exec(location.search);
+    return m ? m[1] : null;
+  }
+  var layer = getParam('layer', '[A-Za-z0-9_]+');
+  var framesParam = getParam('frames', '[0-9]+');
+  if (framesParam) CONFIG.frameCount = Math.max(1, Math.min(12, parseInt(framesParam, 10)));
+  var bboxParam = getParam('bbox', '[-0-9.,]+');
+  if (bboxParam) {
+    var parts = bboxParam.split(',');
+    if (parts.length === 4) CONFIG.bbox = [parseFloat(parts[0]), parseFloat(parts[1]), parseFloat(parts[2]), parseFloat(parts[3])];
+  }
+
+  // ---- Helpers --------------------------------------------------------------
+  var statusEl = document.getElementById('status');
+  var clockEl = document.getElementById('clock');
+  var dotsEl = document.getElementById('dots');
+  var mapbox = document.getElementById('mapbox');
+
+  function setStatus(text) { statusEl.textContent = text || ''; }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function toIsoZ(ms) { return new Date(ms).toISOString().replace(/\.\d+Z$/, 'Z'); }
+  function currentUtcHour() { var d = new Date(); d.setUTCMinutes(0, 0, 0); return d.getTime(); }
+
+  // Show JavaScript errors on screen (helps when debugging on the player)
+  window.onerror = function (message) { setStatus(TEXT.errorPrefix + message); };
+
+  document.getElementById('source').textContent = TEXT.source;
+
+  // Without a layer there is nothing to show
+  if (!layer) {
+    document.getElementById('info').style.display = 'none';
+    var notice = document.getElementById('notice');
+    notice.style.whiteSpace = 'pre-line';
+    notice.textContent = TEXT.layerRequired;
+    return;
+  }
+  document.getElementById('title').textContent = TEXT.layers[layer] || layer;
+
+  function buildImageUrl(timeMs) {
+    var url = CONFIG.baseUrl + '?REQUEST=GetMap&SERVICE=WMS&VERSION=1.1.1&FORMAT=image%2Fpng'
+      + '&TIME=' + encodeURIComponent(toIsoZ(timeMs)) + '&STYLES='
+      + '&LAYERS=' + encodeURIComponent(layer) + '&WIDTH=' + CONFIG.size + '&HEIGHT=' + CONFIG.size
+      + '&SRS=' + encodeURIComponent(CONFIG.srs) + '&BBOX=' + encodeURIComponent(CONFIG.bbox.join(','));
+    if (CONFIG.cacheBust) url += '&_=' + Math.floor(Date.now() / 3600000);
+    return url;
+  }
+
+  // ---- Loop -----------------------------------------------------------------
+  var frames = [];            // { time, img, state: 'loading' | 'ok' | 'failed' }
+  var baseHour = 0;           // the UTC hour the current frames were built for
+  var shownIndex = -1;
+  var loopTimer = null;
+  var retryTimer = null;
+
+  function renderDots() {
+    dotsEl.innerHTML = '';
+    frames.forEach(function (frame, i) {
+      var dot = document.createElement('span');
+      dot.className = 'dot' + (frame.state === 'failed' ? ' missing' : '') + (i === shownIndex ? ' active' : '');
+      dotsEl.appendChild(dot);
+    });
+  }
+
+  function showFrame(index) {
+    shownIndex = index;
+    frames.forEach(function (frame, i) { frame.img.style.display = (i === index) ? 'block' : 'none'; });
+    clockEl.textContent = pad(new Date(frames[index].time).getHours()) + ':00';   // player's local time
+    renderDots();
+  }
+
+  function removeImages() {
+    var images = mapbox.getElementsByTagName('img');
+    while (images.length) mapbox.removeChild(images[0]);
+  }
+
+  function buildFrames() {
+    clearTimeout(loopTimer);
+    clearTimeout(retryTimer);
+    removeImages();
+    frames = [];
+    shownIndex = -1;
+    baseHour = currentUtcHour();
+    for (var i = 0; i < CONFIG.frameCount; i++) {
+      (function (time) {
+        var img = document.createElement('img');
+        var frame = { time: time, img: img, state: 'loading' };
+        img.onload = function () { frame.state = 'ok'; };
+        img.onerror = function () { frame.state = 'failed'; };
+        img.alt = '';
+        mapbox.insertBefore(img, mapbox.firstChild);   // keep the images below the text
+        img.src = buildImageUrl(time);
+        frames.push(frame);
+      })(baseHour + i * 3600000);
+    }
+    renderDots();
+    step();
+  }
+
+  function step() {
+    var loading = 0, okIndexes = [], i;
+    for (i = 0; i < frames.length; i++) {
+      if (frames[i].state === 'loading') loading++;
+      else if (frames[i].state === 'ok') okIndexes.push(i);
+    }
+    if (!okIndexes.length) {
+      if (loading) { setStatus(TEXT.loading); loopTimer = setTimeout(step, 700); return; }
+      setStatus(TEXT.loadFailed);
+      clockEl.textContent = '–';
+      retryTimer = setTimeout(buildFrames, 60000);   // try again after one minute
+      return;
+    }
+    var missing = frames.length - okIndexes.length - loading;
+    setStatus(missing > 0 ? TEXT.missingFrames(missing, frames.length) : '');
+
+    // Next frame that loaded successfully (frames that failed are skipped)
+    var next = -1;
+    for (i = 1; i <= frames.length; i++) {
+      var candidate = (shownIndex + i + frames.length) % frames.length;
+      if (frames[candidate].state === 'ok') { next = candidate; break; }
+    }
+    showFrame(next);
+    loopTimer = setTimeout(step, next === okIndexes[0] ? CONFIG.firstFrameMs : CONFIG.frameMs);
+  }
+
+  // A new hour has started: fetch everything again. Checked often, since the player may have been restarted.
+  setInterval(function () { if (currentUtcHour() !== baseHour) buildFrames(); }, CONFIG.checkMs);
+
+  buildFrames();
+})();
+</script>
+</body>
+</html>
