@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- Do not tell dmi.dk which site the request comes from -->
+<meta name="referrer" content="no-referrer">
+<title>Dashboard</title>
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #0b1a2b; }
+  /* Fixed 3840 x 2160 design, scaled to fit the screen */
+  #stage { position: absolute; left: 0; top: 0; width: 3840px; height: 2160px; transform-origin: 0 0; overflow: hidden;
+    background: #0b1a2b; color: #f2f6fa; font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 60px; display: flex; }
+  .card { background: #112740; border: 1px solid #2a4058; border-radius: 28px; }
+  .col-left { width: 900px; flex: none; display: flex; flex-direction: column; margin-right: 60px; }
+  .col-right { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .muted { color: #a9bacb; }
+  .tab { font-variant-numeric: tabular-nums; }
+  .big { font-weight: 700; line-height: 1; }
+  .unit { line-height: 1; color: #a9bacb; }
+
+  #clockCard { height: 300px; flex: none; padding: 30px 48px; margin-bottom: 60px; }
+  #clock { font-size: 190px; font-weight: 700; line-height: 1; }
+  #date { font-size: 50px; margin-top: 8px; }
+  #sunCard { height: 200px; flex: none; padding: 0 48px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 60px; }
+  .sunitem { display: flex; align-items: center; }
+  .sunitem svg { margin-right: 24px; }
+  .sunlabel { font-size: 38px; color: #a9bacb; }
+  .sunval { font-size: 84px; font-weight: 700; line-height: 1.1; }
+  #calCard { flex: 1; min-height: 0; background: #fff; border: 1px solid #2a4058; border-radius: 28px; overflow: hidden; position: relative; }
+  #calFrame { position: absolute; left: 0; top: 0; width: 100%; height: 100%; border: 0; background: #fff; }
+  #calNote { padding: 48px; font-size: 38px; line-height: 1.4; color: #1b2a38; }
+
+  .maps { display: flex; flex: none; margin-bottom: 60px; }
+  .mapbox { position: relative; width: 1350px; height: 1350px; flex: none; background: #1d4468; border: 1px solid #2a4058; border-radius: 28px; overflow: hidden; }
+  .mapbox + .mapbox { margin-left: 60px; }
+  .mapbox img.mapimg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; display: none; }
+  .info { position: absolute; top: 40px; right: 40px; text-align: right; background: rgba(11,26,43,.78); padding: 22px 36px 26px; border-radius: 20px; }
+  .mtitle { font-size: 46px; color: #a9bacb; letter-spacing: .04em; text-transform: uppercase; line-height: 1.2; }
+  .mclock { font-size: 133px; font-weight: 700; line-height: 1.05; color: #4fc3f7; font-variant-numeric: tabular-nums; }
+  .dots { display: flex; margin-top: 14px; }
+  .dot { width: 26px; height: 26px; border-radius: 50%; background: #3a5068; margin-right: 16px; }
+  .dot:last-child { margin-right: 0; }
+  .dot.active { background: #4fc3f7; }
+  .dot.missing { background: transparent; border: 3px solid #7f93a8; }
+  .mstatus { font-size: 36px; color: #ff8a80; margin-top: 12px; line-height: 1.2; }
+  .mstatus:empty { display: none; }
+  .msource { position: absolute; bottom: 40px; right: 40px; font-size: 35px; color: #a9bacb; background: rgba(11,26,43,.78); padding: 8px 22px; border-radius: 14px; }
+  .mlegend { position: absolute; left: 40px; bottom: 40px; background: rgba(11,26,43,.78); padding: 16px 24px 18px; border-radius: 14px; }
+  .mlunit { font-size: 32px; color: #a9bacb; line-height: 1.2; margin-bottom: 8px; }
+  .mlrow { display: flex; align-items: center; height: 34px; }
+  .mlsw { width: 48px; height: 34px; flex: none; margin-right: 16px; }
+  .mltx { font-size: 28px; color: #f2f6fa; line-height: 1; min-width: 52px; }
+  .mnotice { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); padding: 0 80px; text-align: center; font-size: 50px; color: #a9bacb; white-space: pre-line; }
+
+  .bottom { flex: 1; min-height: 0; display: flex; }
+  #windCard { width: 1150px; flex: none; padding: 36px 56px; display: flex; flex-direction: column; margin-right: 60px; }
+  .windbody { flex: 1; display: flex; align-items: center; min-height: 0; }
+  .windbody > svg { flex: none; margin-right: 30px; }
+  .wlabel { font-size: 40px; color: #a9bacb; }
+  .wrow { display: flex; align-items: flex-start; }
+  .wval { font-size: 135px; }
+  .wunit { font-size: 44px; margin: 10px 0 0 12px; }
+  #tempCard { flex: 1; min-width: 0; padding: 36px 48px; display: flex; flex-direction: column; }
+  #curCard { width: 740px; flex: none; padding: 36px 48px; display: flex; flex-direction: column; margin-right: 60px; }
+  .chead { font-size: 40px; color: #a9bacb; letter-spacing: .04em; text-transform: uppercase; line-height: 1.2; }
+  .csub { font-size: 36px; color: #a9bacb; line-height: 1.2; margin-top: 4px; }
+  .cbody { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; }
+  .cfoot { font-size: 32px; color: #7f93a8; line-height: 1.2; }
+  .curbody { flex: 1; display: flex; align-items: center; min-height: 0; }
+  .curbody > svg { flex: none; margin-right: 36px; }
+  .trow { display: flex; align-items: center; }
+  .trow + .trow { margin-top: 16px; }
+  .trow svg { flex: none; margin-right: 36px; }
+  .tval { font-size: 130px; }
+  .tunit { font-size: 52px; margin: 10px 0 0 12px; }
+</style>
+</head>
+<body>
+<div id="stage">
+
+  <!-- Left: clock, sun, calendar -->
+  <div class="col-left">
+    <div class="card" id="clockCard">
+      <div id="clock" class="tab">--:--</div>
+      <div id="date" class="muted">&nbsp;</div>
+    </div>
+    <div class="card" id="sunCard">
+      <div class="sunitem">
+        <svg viewBox="0 0 48 48" width="104" height="104" fill="none" stroke="#ffd54f" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 38h36"/><path d="M13 38a11 11 0 0 1 22 0"/><path d="M24 6v12"/><path d="M19 11l5-5 5 5"/></svg>
+        <div><div class="sunlabel" id="sunriseLabel"></div><div class="sunval tab" id="sunrise">--:--</div></div>
+      </div>
+      <div class="sunitem">
+        <svg viewBox="0 0 48 48" width="104" height="104" fill="none" stroke="#ffb74d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M6 38h36"/><path d="M13 38a11 11 0 0 1 22 0"/><path d="M24 18V6"/><path d="M19 13l5 5 5-5"/></svg>
+        <div><div class="sunlabel" id="sunsetLabel"></div><div class="sunval tab" id="sunset">--:--</div></div>
+      </div>
+    </div>
+    <div id="calCard"></div>
+  </div>
+
+  <!-- Right: maps, wind, temperatures -->
+  <div class="col-right">
+    <div class="maps">
+      <div class="mapbox" id="map1"><div class="info"><div class="mtitle"></div><div class="mclock">–</div><div class="dots"></div><div class="mstatus"></div></div><div class="msource"></div><div class="mnotice"></div></div>
+      <div class="mapbox" id="map2"><div class="info"><div class="mtitle"></div><div class="mclock">–</div><div class="dots"></div><div class="mstatus"></div></div><div class="msource"></div><div class="mnotice"></div></div>
+    </div>
+    <div class="bottom">
+      <div class="card" id="windCard">
+        <div class="chead">Vind</div><div class="csub" id="windTitle">&nbsp;</div>
+        <div class="windbody">
+          <svg viewBox="0 0 500 500" width="390" height="390" role="img" aria-label="Vindriktning">
+            <circle cx="250" cy="250" r="170" fill="none" stroke="#2a4058" stroke-width="6"/>
+            <g stroke="#8fa3b8" stroke-width="8" stroke-linecap="round"><line x1="250" y1="80" x2="250" y2="112"/><line x1="420" y1="250" x2="388" y2="250"/><line x1="250" y1="420" x2="250" y2="388"/><line x1="80" y1="250" x2="112" y2="250"/></g>
+            <g fill="#f2f6fa" font-size="48" font-weight="700" text-anchor="middle" font-family="Segoe UI,Roboto,Arial,sans-serif"><text x="250" y="56">N</text><text x="464" y="266">Ö</text><text x="250" y="486">S</text><text x="36" y="266">V</text></g>
+            <g id="arrow" style="display:none"><polygon points="250,100 288,250 261,250 261,400 239,400 239,250 212,250" fill="#4fc3f7"/></g>
+            <circle cx="250" cy="250" r="14" fill="#112740" stroke="#4fc3f7" stroke-width="5"/>
+          </svg>
+          <div>
+            <div><div class="wlabel" id="meanLabel"></div><div class="wrow"><span class="wval big tab" id="mean" style="color:#4fc3f7">-</span><span class="wunit unit">m/s</span></div></div>
+            <div style="margin-top:24px"><div class="wlabel" id="gustLabel"></div><div class="wrow"><span class="wval big tab" id="gust" style="color:#ffb74d">-</span><span class="wunit unit">m/s</span></div></div>
+          </div>
+        </div>
+        <div class="cfoot" id="windSource"></div>
+      </div>
+      <div class="card" id="curCard">
+        <div class="chead" id="curHead"></div>
+        <div class="csub" id="curSub">&nbsp;</div>
+        <div class="curbody">
+          <svg viewBox="0 0 500 500" width="240" height="240" role="img" aria-label="Strömriktning">
+            <circle cx="250" cy="250" r="190" fill="none" stroke="#2a4058" stroke-width="8"/>
+            <g id="curArrow" style="display:none"><polygon points="250,70 300,250 268,250 268,430 232,430 232,250 200,250" fill="#4dd0c4"/></g>
+            <circle cx="250" cy="250" r="16" fill="#112740" stroke="#4dd0c4" stroke-width="6"/>
+          </svg>
+          <div><div class="wrow"><span class="wval big tab" id="curVal" style="color:#4dd0c4">-</span><span class="wunit unit" id="curUnit">m/s</span></div></div>
+        </div>
+        <div class="cfoot" id="curSource"></div>
+      </div>
+      <div class="card" id="tempCard">
+        <div class="chead" id="tempHead"></div><div class="csub" id="tempSub"></div>
+        <div class="cbody">
+        <div class="trow">
+          <svg viewBox="0 0 64 64" width="120" height="120" fill="none" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><g stroke="#ffd54f"><circle cx="22" cy="22" r="7"/><line x1="10" y1="22" x2="5" y2="22"/><line x1="13.5" y1="13.5" x2="10" y2="10"/><line x1="22" y1="10" x2="22" y2="5"/><line x1="30.5" y1="13.5" x2="34" y2="10"/><line x1="13.5" y1="30.5" x2="10" y2="34"/></g><path d="M20 50h26a9 9 0 0 0 1-17.9 13 13 0 0 0-25-2A10 10 0 0 0 20 50Z" fill="#112740" stroke="#a9bacb"/></svg>
+          <div><div class="wlabel" id="airLabel"></div><div class="wrow"><span class="tval big tab" id="air" style="color:#ffd54f">-</span><span class="tunit unit">°C</span></div></div>
+        </div>
+        <div class="trow">
+          <svg viewBox="0 0 64 64" width="120" height="120" fill="none" stroke="#4dd0c4" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><path d="M32 7C32 7 15 26 15 38a17 17 0 0 0 34 0C49 26 32 7 32 7Z"/><path d="M22 40q5-5 10 0t10 0"/><path d="M22 47q5-5 10 0t10 0"/></svg>
+          <div><div class="wlabel" id="waterLabel"></div><div class="wrow"><span class="tval big tab" id="water" style="color:#4dd0c4">-</span><span class="tunit unit">°C</span></div></div>
+        </div>
+        </div>
+        <div class="cfoot" id="tempSource"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  // ---- Settings -------------------------------------------------------------
+  var CONFIG = {
+    calendarUrl: '',              // Teamup embed URL (or use ?cal=<url-encoded address>)
+    lat: 55.605, lon: 13.0,       // Malmö, used for sunrise / sunset
+    vivaStation: 68,
+    currentStation: 91,           // surface current (Viva)
+    currentArrowOffset: 0,        // Malmö Hamn
+    smhiStation: 52350,           // Malmö A
+    vivaMs: 30 * 1000,            // wind refresh
+    smhiMs: 5 * 60 * 1000,        // air temperature refresh
+    arrowOffset: 180,             // use 180 to flip the arrow (wind blows from <-> towards the heading)
+    // Same order as the Viva meters: wind first, current second. Colour scales copied from dmi.dk (top = highest value).
+    maps: [
+      { layer: 'wind_eu', unit: 'm/s', scale: [['rgb(92,0,51)', '50'], ['rgb(128,0,0)', '32'], ['rgb(204,31,31)', '28'], ['rgb(230,57,57)', '26'], ['rgb(255,82,82)', '24'], ['rgb(255,142,82)', '22'], ['rgb(255,178,0)', '20'], ['rgb(255,217,0)', '18'], ['rgb(255,236,127)', '16'], ['rgb(255,245,191)', '14'], ['rgb(0,143,233)', '12'], ['rgb(61,171,238)', '10'], ['rgb(109,191,242)', '8'], ['rgb(22,225,204)', '6'], ['rgb(125,238,226)', '4'], ['rgb(158,242,233)', '2'], ['rgb(220,250,247)', '']] },
+      { layer: 'current_eu', unit: 'knop', scale: [['rgb(92,0,51)', '5,0'], ['rgb(128,0,0)', '4,8'], ['rgb(204,31,31)', '4,0'], ['rgb(230,57,57)', '3,5'], ['rgb(255,82,82)', '3,0'], ['rgb(255,124,124)', '2,5'], ['rgb(255,181,181)', '2,0'], ['rgb(255,142,82)', '1,5'], ['rgb(255,178,0)', '1,2'], ['rgb(255,217,0)', '1,0'], ['rgb(0,143,233)', '0,8'], ['rgb(61,171,238)', '0,6'], ['rgb(109,191,242)', '0,4'], ['rgb(22,225,204)', '0,3'], ['rgb(125,238,226)', '0,2'], ['rgb(158,242,233)', '0,1'], ['rgb(220,250,247)', '']] }
+    ],
+    dmi: {
+      baseUrl: 'https://www.dmi.dk/ZoombareKort/map', srs: 'EPSG:3575', size: 512,
+      bbox: [147460.9375, -3808593.75, 229492.1875, -3726562.5],   // square, 82 x 82 km
+      frameCount: 5, frameMs: 1500, firstFrameMs: 3000, checkMs: 30 * 1000
+    }
+  };
+
+  // Text shown on screen (Swedish)
+  var TEXT = {
+    layers: { current_eu: 'Havsström', wind_eu: 'Vind' },
+    source: 'Källa: DMI', loading: 'Hämtar kartor…', loadFailed: 'Kunde inte hämta kartan från DMI',
+    missingFrames: function (m, t) { return m + ' av ' + t + ' tider saknas'; },
+    sunrise: 'Soluppgång', sunset: 'Solnedgång',
+    mean: 'Medelvind', gust: 'Byvind', air: 'Luft', water: 'Vatten',
+    station: 'Malmö Hamn', measured: 'mätning',
+    current: 'Ström, yta', currentStation: 'Flinten 16', tempHead: 'Temperatur', tempSub: 'Malmö',
+    windSource: 'Källa: Sjöfartsverket (Viva)', curSource: 'Källa: Sjöfartsverket (Viva)',
+    tempSource: 'Källa: SMHI, Sjöfartsverket',
+    noCalendar: 'Ingen kalender angiven.\nLägg till ?cal=<adress till Teamup-kalendern>',
+    days: ['söndag', 'måndag', 'tisdag', 'onsdag', 'torsdag', 'fredag', 'lördag'],
+    months: ['januari', 'februari', 'mars', 'april', 'maj', 'juni', 'juli', 'augusti', 'september', 'oktober', 'november', 'december']
+  };
+
+  function $(id) { return document.getElementById(id); }
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function hhmm(d) { return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+  function dec1(v) { return (Math.round(v * 10) / 10).toFixed(1).replace('.', ','); }
+  function param(name) {
+    var m = new RegExp('[?&]' + name + '=([^&]*)').exec(location.search);
+    return m ? decodeURIComponent(m[1]) : null;
+  }
+  function getJson(url, ok, fail) {
+    var x = new XMLHttpRequest();
+    x.open('GET', url, true);
+    x.timeout = 15000;
+    x.onload = function () {
+      if (x.status >= 200 && x.status < 300) { try { ok(JSON.parse(x.responseText)); } catch (e) { fail(); } } else fail();
+    };
+    x.onerror = x.ontimeout = fail;
+    x.send();
+  }
+  window.onerror = function (m) { var e = $('windTitle'); if (e) e.textContent = 'Fel: ' + m; };
+
+  // ---- Scale the 4K design to the screen ---------------------------------
+  var stage = $('stage');
+  function fit() {
+    var w = window.innerWidth, h = window.innerHeight, s = Math.min(w / 3840, h / 2160);
+    stage.style.transform = 'scale(' + s + ')';
+    stage.style.left = Math.round((w - 3840 * s) / 2) + 'px';
+    stage.style.top = Math.round((h - 2160 * s) / 2) + 'px';
+  }
+  window.onresize = fit; fit();
+
+  // ---- Static texts -----------------------------------------------------------
+  $('sunriseLabel').textContent = TEXT.sunrise; $('sunsetLabel').textContent = TEXT.sunset;
+  $('meanLabel').textContent = TEXT.mean; $('gustLabel').textContent = TEXT.gust;
+  $('airLabel').textContent = TEXT.air; $('waterLabel').textContent = TEXT.water;
+  $('windTitle').textContent = TEXT.station;
+  $('curHead').textContent = TEXT.current; $('curSub').textContent = TEXT.currentStation;
+  $('tempHead').textContent = TEXT.tempHead; $('tempSub').textContent = TEXT.tempSub;
+  $('windSource').textContent = TEXT.windSource; $('curSource').textContent = TEXT.curSource; $('tempSource').textContent = TEXT.tempSource;
+
+  // ---- Calendar -------------------------------------------------------------
+  var calUrl = param('cal') || CONFIG.calendarUrl;
+  var calCard = $('calCard');
+  if (calUrl) {
+    var f = document.createElement('iframe');
+    f.id = 'calFrame'; f.src = calUrl; calCard.appendChild(f);
+  } else {
+    var n = document.createElement('div'); n.id = 'calNote'; n.style.whiteSpace = 'pre-line'; n.textContent = TEXT.noCalendar; calCard.appendChild(n);
+  }
+
+  // ---- Clock, date, sun -----------------------------------------------------
+  // Sunrise / sunset (zenith 90.833), algorithm from the Almanac for Computers
+  function sunEvent(y, mo, d, rising) {
+    var rad = Math.PI / 180, N = Math.round((Date.UTC(y, mo, d) - Date.UTC(y, 0, 0)) / 86400000);
+    var lngH = CONFIG.lon / 15, t = N + ((rising ? 6 : 18) - lngH) / 24;
+    var M = 0.9856 * t - 3.289;
+    var L = (M + 1.916 * Math.sin(M * rad) + 0.020 * Math.sin(2 * M * rad) + 282.634) % 360;
+    var RA = (Math.atan(0.91764 * Math.tan(L * rad)) / rad + 360) % 360;
+    RA += Math.floor(L / 90) * 90 - Math.floor(RA / 90) * 90; RA /= 15;
+    var sinD = 0.39782 * Math.sin(L * rad), cosD = Math.cos(Math.asin(sinD));
+    var cosH = (Math.cos(90.833 * rad) - sinD * Math.sin(CONFIG.lat * rad)) / (cosD * Math.cos(CONFIG.lat * rad));
+    if (cosH > 1 || cosH < -1) return null;
+    var H = (rising ? 360 - Math.acos(cosH) / rad : Math.acos(cosH) / rad) / 15;
+    var T = H + RA - 0.06571 * t - 6.622, UT = ((T - lngH) % 24 + 24) % 24;
+    return new Date(Date.UTC(y, mo, d) + UT * 3600000);
+  }
+  var lastDay = '';
+  function tick() {
+    var now = new Date();
+    $('clock').textContent = hhmm(now);
+    var key = now.getFullYear() + '-' + now.getMonth() + '-' + now.getDate();
+    if (key !== lastDay) {
+      lastDay = key;
+      $('date').textContent = TEXT.days[now.getDay()] + ' ' + now.getDate() + ' ' + TEXT.months[now.getMonth()];
+      var up = sunEvent(now.getFullYear(), now.getMonth(), now.getDate(), true);
+      var down = sunEvent(now.getFullYear(), now.getMonth(), now.getDate(), false);
+      $('sunrise').textContent = up ? hhmm(up) : '--:--';
+      $('sunset').textContent = down ? hhmm(down) : '--:--';
+    }
+  }
+  tick(); setInterval(tick, 10000);
+
+  // ---- Wind and water temperature (Viva) ---------------------------------------
+  function parseUpdated(u) {
+    var m = /\/Date\((-?\d+)/.exec(u || '');
+    if (m) return new Date(parseInt(m[1], 10));
+    m = /(\d{4})-(\d\d)-(\d\d)[ T](\d\d):(\d\d)/.exec(u || '');
+    return m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]) : null;
+  }
+  // Values can carry a prefix, e.g. "NO 1.1" -> 1.1
+  function num(v) {
+    if (v === null || v === undefined || v === '') return null;
+    var m = /-?\d+(?:[.,]\d+)?/.exec(String(v));
+    return m ? parseFloat(m[0].replace(',', '.')) : null;
+  }
+  function loadViva() {
+    var url = 'https://services.viva.sjofartsverket.se/output/vivaoutputservice.svc/ViVaStationWithDirection/' + CONFIG.vivaStation;
+    getJson(url, function (j) {
+      var s = (j.GetSingleStationWithDirectionsAsParametersResult || {}).Samples || [], by = {}, i;
+      for (i = 0; i < s.length; i++) by[s[i].Name] = s[i];
+      function v(n) { return by[n] ? num(by[n].Value) : null; }
+      var mean = v('Medelvind'), gust = v('Byvind'), water = v('Vattentemp');
+      $('mean').textContent = mean === null ? '-' : dec1(mean);
+      $('gust').textContent = gust === null ? '-' : dec1(gust);
+      if (water !== null) $('water').textContent = dec1(water);
+      var deg = by.Medelvind ? num(by.Medelvind.Heading) : null;
+      if (deg === null) deg = v('Vindriktning');
+      if (deg === null && by.Byvind) deg = num(by.Byvind.Heading);
+      var arrow = $('arrow');
+      if (deg !== null) { arrow.setAttribute('transform', 'rotate(' + (deg + CONFIG.arrowOffset) + ' 250 250)'); arrow.style.display = ''; }
+      var up = parseUpdated(by.Medelvind && by.Medelvind.Updated);
+      $('windTitle').textContent = TEXT.station + (up ? ' · ' + TEXT.measured + ' ' + hhmm(up) : '');
+    }, function () { $('windTitle').textContent = TEXT.station + ' · ingen data'; });
+  }
+  loadViva(); setInterval(loadViva, CONFIG.vivaMs);
+
+  // ---- Surface current (Viva station 91) ---------------------------------------
+  // Sample names for this station are matched loosely: anything containing "ström" (speed) / "riktning" (direction).
+  // Add ?debug=1 to see the sample names the station actually delivers.
+  function loadCurrent() {
+    var url = 'https://services.viva.sjofartsverket.se/output/vivaoutputservice.svc/ViVaStationWithDirection/' + CONFIG.currentStation;
+    getJson(url, function (j) {
+      var r = j.GetSingleStationWithDirectionsAsParametersResult || {}, s = r.Samples || [], speed = null, dir = null, i;
+      if (param('debug')) { var names = []; for (i = 0; i < s.length; i++) names.push(s[i].Name + '=' + s[i].Value + (s[i].Heading != null ? '@' + s[i].Heading : '')); $('curSub').textContent = names.join(' | '); }
+      for (i = 0; i < s.length; i++) {
+        var n = s[i].Name || '';
+        if (/riktning/i.test(n) && /ström/i.test(n)) { if (!dir) dir = s[i]; }
+        else if (/ström/i.test(n) && !speed) speed = s[i];
+      }
+      if (!speed) { $('curVal').textContent = '-'; return; }
+      var v = num(speed.Value);
+      $('curVal').textContent = v === null ? '-' : dec1(v);
+      if (speed.Unit) $('curUnit').textContent = speed.Unit;
+      var deg = dir ? num(dir.Value) : null;
+      if (deg === null) deg = num(speed.Heading);
+      var a = $('curArrow');
+      if (deg !== null) { a.setAttribute('transform', 'rotate(' + (deg + CONFIG.currentArrowOffset) + ' 250 250)'); a.style.display = ''; }
+    }, function () { $('curVal').textContent = '-'; });
+  }
+  loadCurrent(); setInterval(loadCurrent, CONFIG.vivaMs);
+
+  // ---- Air temperature (SMHI) ------------------------------------------------
+  function loadSmhi(period) {
+    var url = 'https://opendata-download-metobs.smhi.se/api/version/1.0/parameter/1/station/' + CONFIG.smhiStation + '/period/' + period + '/data.json';
+    getJson(url, function (j) {
+      var vals = j.value || [];
+      if (!vals.length) { if (period === 'latest-hour') loadSmhi('latest-day'); return; }
+      var n = num(vals[vals.length - 1].value);
+      if (n !== null) $('air').textContent = dec1(n);
+    }, function () { if (period === 'latest-hour') loadSmhi('latest-day'); });
+  }
+  function refreshSmhi() { loadSmhi('latest-hour'); }
+  refreshSmhi(); setInterval(refreshSmhi, CONFIG.smhiMs);
+
+  // ---- DMI map loops --------------------------------------------------------------
+  function startMap(box, layer, conf) {
+    if (conf && conf.scale) {
+      var lg = document.createElement('div'), h = '<div class="mlunit">' + conf.unit + '</div>';
+      lg.className = 'mlegend';
+      for (var q = 0; q < conf.scale.length; q++) h += '<div class="mlrow"><span class="mlsw" style="background:' + conf.scale[q][0] + '"></span><span class="mltx">' + conf.scale[q][1] + '</span></div>';
+      lg.innerHTML = h; box.appendChild(lg);
+    }
+    var D = CONFIG.dmi, info = box.children[0];
+    var titleEl = info.children[0], clockEl = info.children[1], dotsEl = info.children[2], statusEl = info.children[3];
+    box.children[1].textContent = TEXT.source;
+    titleEl.textContent = TEXT.layers[layer] || layer;
+    var frames = [], baseHour = 0, shown = -1, loopT = null, retryT = null;
+
+    function utcHour() { var d = new Date(); d.setUTCMinutes(0, 0, 0); return d.getTime(); }
+    function iso(ms) { return new Date(ms).toISOString().replace(/\.\d+Z$/, 'Z'); }
+    function imgUrl(t) {
+      return D.baseUrl + '?REQUEST=GetMap&SERVICE=WMS&VERSION=1.1.1&FORMAT=image%2Fpng&TIME=' + encodeURIComponent(iso(t)) + '&STYLES='
+        + '&LAYERS=' + encodeURIComponent(layer) + '&WIDTH=' + D.size + '&HEIGHT=' + D.size + '&SRS=' + encodeURIComponent(D.srs)
+        + '&BBOX=' + encodeURIComponent(D.bbox.join(',')) + '&_=' + Math.floor(Date.now() / 3600000);
+    }
+    function renderDots() {
+      dotsEl.innerHTML = '';
+      for (var i = 0; i < frames.length; i++) {
+        var d = document.createElement('span');
+        d.className = 'dot' + (frames[i].state === 'failed' ? ' missing' : '') + (i === shown ? ' active' : '');
+        dotsEl.appendChild(d);
+      }
+    }
+    function show(i) {
+      shown = i;
+      for (var k = 0; k < frames.length; k++) frames[k].img.style.display = (k === i) ? 'block' : 'none';
+      clockEl.textContent = pad(new Date(frames[i].time).getHours()) + ':00';
+      renderDots();
+    }
+    function build() {
+      clearTimeout(loopT); clearTimeout(retryT);
+      var old = box.querySelectorAll('img.mapimg');
+      for (var q = 0; q < old.length; q++) box.removeChild(old[q]);
+      frames = []; shown = -1; baseHour = utcHour();
+      for (var i = 0; i < D.frameCount; i++) {
+        (function (time) {
+          var img = document.createElement('img'), fr = { time: time, img: img, state: 'loading' };
+          img.onload = function () { fr.state = 'ok'; };
+          img.onerror = function () { fr.state = 'failed'; };
+          img.alt = ''; img.className = 'mapimg'; img.referrerPolicy = 'no-referrer';
+          box.insertBefore(img, box.firstChild);
+          img.src = imgUrl(time);
+          frames.push(fr);
+        })(baseHour + i * 3600000);
+      }
+      renderDots(); step();
+    }
+    function step() {
+      var loading = 0, ok = [], i;
+      for (i = 0; i < frames.length; i++) { if (frames[i].state === 'loading') loading++; else if (frames[i].state === 'ok') ok.push(i); }
+      if (!ok.length) {
+        if (loading) { statusEl.textContent = TEXT.loading; loopT = setTimeout(step, 700); return; }
+        statusEl.textContent = TEXT.loadFailed; clockEl.textContent = '–';
+        retryT = setTimeout(build, 60000); return;
+      }
+      var missing = frames.length - ok.length - loading;
+      statusEl.textContent = missing > 0 ? TEXT.missingFrames(missing, frames.length) : '';
+      var next = -1;
+      for (i = 1; i <= frames.length; i++) { var c = (shown + i + frames.length) % frames.length; if (frames[c].state === 'ok') { next = c; break; } }
+      show(next);
+      loopT = setTimeout(step, next === ok[0] ? D.firstFrameMs : D.frameMs);
+    }
+    setInterval(function () { if (utcHour() !== baseHour) build(); }, D.checkMs);
+    build();
+  }
+  function mapConf(i) { var c = CONFIG.maps[i], l = param('layer' + (i + 1)); return l ? { layer: l } : c; }
+  startMap($('map1'), mapConf(0).layer, mapConf(0));
+  startMap($('map2'), mapConf(1).layer, mapConf(1));
+})();
+</script>
+</body>
+</html>
